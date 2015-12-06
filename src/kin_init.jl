@@ -53,7 +53,7 @@ function initialize(Ls,Ni,Ts)
   
     r = hcat(x[:], y[:], z[:]);
     
-    r,v
+    r',v'
 end
 
 end

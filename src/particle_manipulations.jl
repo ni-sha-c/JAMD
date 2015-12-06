@@ -1,11 +1,11 @@
-module particle_manipulations
+module part
+include("Definitions.jl")
 
 
-
-global num_atoms = Int64
-global positions = Array{Float64,2}
+global num_atoms = 0, Ls
+global positions 
 global species = ""
-
+global N = 512
 function read(filename)
     global num_atoms, species, positions
 	f = open(filename, "r") #Read a standard .xyz file type

@@ -1,78 +1,134 @@
-
 module MD_calc
 
+include("particle_manipulations.jl")
+include("potential.jl")
 #################################
+#Initialization
+function set_MD_params(n::Int64=27,
+		dt::Float64=0.005,
+		tsteps::Int64=100,
+		steps::Int64=1000,
+		alpha::Float64=0.1,
+		rc::Float64=2.5,
+		Ts::Float64=1.0)
 
-function take_a_step(N,r,v,F,t,dt,Ls,STEPS_thermostat,alpha,Ts)
+	N = n
+	DT = dt
+	STEPS_THERMOSTAT= tsteps
+	TS = Ts
+	α = alpha
+	RC = rc
+	STEPS=steps
 
-vnew = v+dt*F;
-v_c = 0.5*(vnew+v);
+	return (DT,N,STEPS_THERMOSTAT,TS,α,RC)
 
-c = [sum(v_c[:,1]) sum(v_c[:,2]) sum(v_c[:,3])]/N;
-SUM = sum((v_c[:,1]-c[1]).^2+(v_c[:,2]-c[2]).^2+(v_c[:,3]-c[3]).^2);
-T_inst = 2/(3*N)*0.5*SUM;
-
-if t < STEPS_thermostat
-vnew = vnew*sqrt( 1+alpha*(Ts/T_inst-1) );
 end
 
-rnew = r+dt*vnew;
 
-Pos2 = rnew.>=Ls;
-Neg2 = rnew.<0;
-rnew = rnew-Ls.*Pos2+Ls.*Neg2;
+#################################
+#Velocity Verlet
+function take_a_step(TS::Float64,
+		DT::Float64,
+		N::Int64,
+		STEPS_THERMOSTAT::Int64,
+		α::Float64,
+		t::Int64,
+		F::Array{Float64,2},
+		V::Array{Float64,2},
+		POS::Array{Float64,2},LS::Float64)
 
-rnew,vnew,T_inst
 
+
+VCM = mean(V,2);
+V_THERM_SQ =0.e0
+#for i = 1:3*size(POS,1)
+	  V = V +DT/2.0*F
+	  V = broadcast(-,V,VCM)
+	  #V[i] = V[i] + DT/2.0*F[i] - VCM[ceil(Int64,i/N)]
+	 
+for i = 1:3*size(POS,2)	  
+	 
+	  if( t < STEPS_THERMOSTAT)	
+		V_THERM_SQ += (V[i])^2.0
+	  end
 end
+
+T_inst = 2/(3*N)*0.5*V_THERM_SQ;
+c = sqrt( 1+α*(TS/T_inst-1) )
+if( t < STEPS_THERMOSTAT)	
+V = V*c
+end
+
+POS = POS + DT*V
+[POS[i] = POS[i] >=LS ? POS[i]-LS: POS[i] for i = 1:length(POS)]
+[POS[i] = POS[i] <0 ? POS[i]+LS: POS[i] for i = 1:length(POS)]
+
+
+return V,POS,T_inst
+end
+
 
 #################################
 
-function force_calculation(N,r,Ls,rc2)
+function force_calculation(N::Int64,
+						   pos::Array{Float64,2},
+						   Ls::Float64,
+						   rc2::Float64,
+						   F::Array{Float64,2},
+						   U::Array{Float64,2}) 
+	 
 
-    r_matrix_x = repmat(r[:,1],1,N)-repmat(r[:,1],1,N)';
-    r_matrix_y = repmat(r[:,2],1,N)-repmat(r[:,2],1,N)';
-    r_matrix_z = repmat(r[:,3],1,N)-repmat(r[:,3],1,N)';
-    Pos = r_matrix_x.>Ls/2.;
-    Neg = r_matrix_x.<-Ls/2.;
-    r_matrix_x = r_matrix_x-Ls.*(Pos-Neg);
-    Pos = r_matrix_y.>Ls/2.;
-    Neg = r_matrix_y.<-Ls/2.;
-    r_matrix_y = r_matrix_y-Ls.*(Pos-Neg);
-    Pos = r_matrix_z.>Ls/2.;
-    Neg = r_matrix_z.<-Ls/2.;
-    r_matrix_z = r_matrix_z-Ls.*(Pos-Neg);
+				   
+			for i = 1:3:3*(N-1) 
+				for j = i+3:3:3*N
+					xij = pos[i]-pos[j]
+					yij = pos[i+1]-pos[j+1]
+					zij = pos[i+2] - pos[j+2]
+					if(xij > Ls/2.0)
+							xij-=Ls
+					end
+					if(xij < -Ls/2.0)
+							xij+=Ls
+					end
+					if(yij > Ls/2.0)
+							yij-=Ls
+					end
+					if(yij < -Ls/2.0)
+							yij+=Ls
+					end
+					if(zij > Ls/2.0)
+							zij-=Ls
+					end
+					if(zij < -Ls/2.0)
+							zij+=Ls
+					end
 
-    rij_mat=zeros(N,N,3)
 
-    rij_mat[:,:,1] = r_matrix_x;
-    rij_mat[:,:,2] = r_matrix_y;
-    rij_mat[:,:,3] = r_matrix_z;     
-        
-    rij2_mat = r_matrix_x.*r_matrix_x+r_matrix_y.*r_matrix_y+r_matrix_z.*r_matrix_z;
-    Cut = rij2_mat.<=rc2;
-    
-    rij6i_mat = (1./rij2_mat.^3);
-    rij12i_mat = (rij6i_mat.^2);
-    
-    Ftemp = (24./rij2_mat.*(2.*rij12i_mat-rij6i_mat));
-    
-    for i = 1:N
-        Ftemp[i,i] = 0;
-        rij6i_mat[i,i] = 0;
-        rij12i_mat[i,i] = 0;
-    end
+					rij2 = xij^2.0 + yij^2.0 + zij^2.0
+					rij = sqrt(rij2)
+					if(rij2 < rc2^2)
+						p_i= ceil(Int64,i/3)
+						p_j = ceil(Int64,j/3)
+						rij6 = 1./(rij2^3.0)
+						rij12 = 1./(rij2^6.0)
+						c =4.e0*(rij12-rij6)
+						d =24.e0/rij2*(2.0*rij12-rij6)
+						U[p_i] += c
+						U[p_j] += c
 
-    Fij=zeros(N,N,3)
+						F[i] += d*xij
+						F[i+1] += d*yij
+						F[i+2] += d*zij
+						F[j] += -d*xij
+						F[j+1] += -d*yij
+						F[j+2] += -d*zij
+					end
 
-    Fij[:,:,1] = Ftemp.*rij_mat[:,:,1].*Cut;
-    Fij[:,:,2] = Ftemp.*rij_mat[:,:,2].*Cut;
-    Fij[:,:,3] = Ftemp.*rij_mat[:,:,3].*Cut;
-    Uij = 4*(rij12i_mat-rij6i_mat).*Cut;
+				end
+		end
 
-    rij = rij_mat;
-    
-    Fij,Uij,rij
+
+
 
 end
 

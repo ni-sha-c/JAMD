@@ -1,6 +1,8 @@
-
+module potential 
+include("Definitions.jl")
 function LJ(sigma::Float64,epsilon::Float64,p::Particles)
-      
+   
+	rc = 2.5
     N = length(p)
     E = 0.0
     F = zeros(Float64, N, 3)
@@ -16,4 +18,6 @@ function LJ(sigma::Float64,epsilon::Float64,p::Particles)
             F[j,:] += f*diff/r
         end
     end
+end
+
 end

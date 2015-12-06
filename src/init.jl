@@ -1,4 +1,4 @@
 
-load("src/Definitions.jl")
-load("src/LJ_potential.jl")
-load("src/particle_manipulations.jl")
+include("Definitions.jl")
+include("LJ_potential.jl")
+include("particle_manipulations.jl")
